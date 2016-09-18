@@ -5,16 +5,6 @@ package com.panda.sakya;
  */
 public class Constant {
 
-    public static final String PATH_SAKYA = "sakya";
-
-    public static final String PATH_SAKYA_DEX = "dex";
-
-    public static final String PATH_SAKYA_DEX_OPT = "dex_opt";
-
-    public static final String PATH_SAKYA_LIB = "lib";
-
-    public static final String PATH_SAKYA_APK = "apk";
-
     public static final String GET_HOST_CONTEXT = "GetHostContext";
 
     public static final String GET_HOST_RESOURCE = "GetHostRes";
