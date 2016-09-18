@@ -84,7 +84,7 @@ public class Sakya {
             PluginManifestUtil.setManifestInfo(context, privateFile.getAbsolutePath(), info);
 
             SakyaClassLoader pluginClassLoader = new SakyaClassLoader(info, privateFile.getAbsolutePath(), CommonFilePath.getPluginOptDexPath(optimizedDir, info).getAbsolutePath()
-                    , CommonFilePath.getPluginLibPath(nativeLibraryDir, info).getAbsolutePath(), getRootClassLoader());
+                    , getPluginLibPath(info).getAbsolutePath(), getRootClassLoader());
             info.setClassLoader(pluginClassLoader);
             ApplicationInfo appInfo = info.getPackageInfo().applicationInfo;
             Application app = makeApplication(info, appInfo);
@@ -94,17 +94,15 @@ public class Sakya {
             SakyaInstrumentation instrumentation = new SakyaInstrumentation(info);
             writeField(instance(), "mInstrumentation", instrumentation, true);
 
-            startActivity(context, info, info.getMainActivity().activityInfo, null);
+            startActivity(context, info, info.getMainActivity().activityInfo);
         }
     }
 
-    public void startActivity(Context from, PlugInfo plugInfo, ActivityInfo activityInfo, Intent intent) {
+    public void startActivity(Context from, PlugInfo plugInfo, ActivityInfo activityInfo) {
         if (activityInfo == null) {
             throw new ActivityNotFoundException("Cannot find ActivityInfo from plugin, could you declare this Activity in plugin?");
         }
-        if (intent == null) {
-            intent = new Intent();
-        }
+        Intent intent = new Intent();
         CreateActivityData createActivityData = new CreateActivityData(activityInfo.name, plugInfo.getPackageName());
         try {
             intent.setClass(from, plugInfo.getClassLoader().loadClass(activityInfo.name));
