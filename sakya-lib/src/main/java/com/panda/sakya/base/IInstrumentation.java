@@ -1,4 +1,4 @@
-package com.panda.sakya;
+package com.panda.sakya.base;
 
 import android.app.Activity;
 import android.app.Fragment;

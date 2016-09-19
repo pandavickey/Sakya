@@ -1,4 +1,4 @@
-package com.panda.sakya;
+package com.panda.sakya.base;
 
 import android.app.Activity;
 import android.app.Fragment;
@@ -13,8 +13,8 @@ import android.os.IBinder;
 import android.os.UserHandle;
 import android.view.ContextThemeWrapper;
 
-import com.panda.sakya.base.DelegateInstrumentation;
-import com.panda.sakya.base.SakyaClassLoader;
+import com.panda.sakya.Constant;
+import com.panda.sakya.Sakya;
 import com.panda.sakya.plugin.CreateActivityData;
 import com.panda.sakya.plugin.DynamicActivity;
 import com.panda.sakya.plugin.PlugInfo;
@@ -22,7 +22,6 @@ import com.panda.sakya.plugin.PluginContext;
 import com.panda.sakya.utils.Reflect;
 
 import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 
 /**

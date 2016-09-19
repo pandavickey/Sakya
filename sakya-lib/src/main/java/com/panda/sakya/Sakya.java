@@ -10,35 +10,23 @@ import android.content.pm.ActivityInfo;
 import android.content.pm.ApplicationInfo;
 import android.content.res.AssetManager;
 import android.content.res.Resources;
-import android.os.Build;
-import android.util.ArrayMap;
-
 import com.panda.sakya.base.SakyaClassLoader;
+import com.panda.sakya.base.SakyaInstrumentation;
 import com.panda.sakya.plugin.CreateActivityData;
 import com.panda.sakya.plugin.DynamicActivity;
 import com.panda.sakya.plugin.PlugInfo;
 import com.panda.sakya.plugin.PluginContext;
 import com.panda.sakya.plugin.PluginManifestUtil;
-import com.panda.sakya.utils.DexUtils;
 import com.panda.sakya.utils.FileUtils;
-
 import java.io.File;
-import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.util.Collection;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-
 import static com.panda.sakya.compat.ActivityThreadCompat.instance;
-import static com.panda.sakya.utils.FieldUtils.getField;
 import static com.panda.sakya.utils.FieldUtils.readField;
 import static com.panda.sakya.utils.FieldUtils.writeField;
 import static com.panda.sakya.utils.MethodUtils.getDeclaredMethod;
-import static com.panda.sakya.utils.MethodUtils.invokeMethod;
-import static com.panda.sakya.utils.MethodUtils.invokeStaticMethod;
 
 /**
  * Created by panda on 16/9/13.
@@ -107,7 +95,7 @@ public class Sakya {
             PluginManifestUtil.setManifestInfo(context, privateFile.getAbsolutePath(), info);
 
             SakyaClassLoader pluginClassLoader = new SakyaClassLoader(info, privateFile.getAbsolutePath(), CommonFilePath.getPluginOptDexPath(optimizedDir, info).getAbsolutePath()
-                    , getPluginLibPath(info).getAbsolutePath(), getRootClassLoader());
+                    , getPluginLibPath(info).getAbsolutePath(), ClassLoader.getSystemClassLoader().getParent());
             info.setClassLoader(pluginClassLoader);
 
             Application app = makeApplication(info);
@@ -121,56 +109,6 @@ public class Sakya {
             pluginPkgToInfoMap.put(info.getPackageName(), info);
 
             startActivity(context, info, info.getMainActivity().activityInfo);
-        }
-    }
-
-
-    private void setAPKResources(AssetManager newAssetManager)
-            throws NoSuchMethodException, IllegalAccessException, InvocationTargetException, ClassNotFoundException {
-        invokeMethod(newAssetManager, "ensureStringBlocks");
-
-        Collection<WeakReference<Resources>> references;
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-            Class<?> resourcesManagerClass = Class.forName("android.app.ResourcesManager");
-            Object resourcesManager = invokeStaticMethod(resourcesManagerClass, "getInstance");
-
-            if (getField(resourcesManagerClass, "mActiveResources") != null) {
-                ArrayMap<?, WeakReference<Resources>> arrayMap = (ArrayMap) readField(resourcesManager, "mActiveResources", true);
-                references = arrayMap.values();
-            } else {
-                references = (Collection) readField(resourcesManager, "mResourceReferences", true);
-            }
-        } else {
-            HashMap<?, WeakReference<Resources>> map = (HashMap) readField(instance(), "mActiveResources", true);
-            references = map.values();
-        }
-
-        for (WeakReference<Resources> wr : references) {
-            Resources resources = wr.get();
-            if (resources == null) continue;
-
-            try {
-                writeField(resources, "mAssets", newAssetManager);
-            } catch (Throwable ignore) {
-                Object resourceImpl = readField(resources, "mResourcesImpl", true);
-                writeField(resourceImpl, "mAssets", newAssetManager);
-            }
-
-            resources.updateConfiguration(resources.getConfiguration(), resources.getDisplayMetrics());
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            for (WeakReference<Resources> wr : references) {
-                Resources resources = wr.get();
-                if (resources == null) continue;
-
-                // android.util.Pools$SynchronizedPool<TypedArray>
-                Object typedArrayPool = readField(resources, "mTypedArrayPool", true);
-
-                // Clear all the pools
-                while (invokeMethod(typedArrayPool, "acquire") != null) ;
-            }
         }
     }
 
@@ -212,16 +150,6 @@ public class Sakya {
         } catch (Throwable e) {
             e.printStackTrace();
         }
-    }
-
-    private ClassLoader getRootClassLoader() {
-        ClassLoader rootClassLoader = null;
-        ClassLoader classLoader = DexUtils.class.getClassLoader();
-        while (classLoader != null) {
-            rootClassLoader = classLoader;
-            classLoader = classLoader.getParent();
-        }
-        return rootClassLoader;
     }
 
     public File getPluginLibPath(PlugInfo info) {

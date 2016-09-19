@@ -20,7 +20,7 @@ public class MainActivity extends Activity {
             @Override
             public void onClick(View v) {
                 try {
-                    Sakya.getSingleton().loadApk(new File("/storage/emulated/0/team.apk"));
+                    Sakya.getSingleton().loadApk(new File("/storage/emulated/0/amigo.apk"));
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
