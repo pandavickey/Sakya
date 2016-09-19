@@ -1,6 +1,7 @@
 package com.panda.sakya;
 
 import android.app.Application;
+import android.app.Instrumentation;
 import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.ContextWrapper;
@@ -9,17 +10,35 @@ import android.content.pm.ActivityInfo;
 import android.content.pm.ApplicationInfo;
 import android.content.res.AssetManager;
 import android.content.res.Resources;
+import android.os.Build;
+import android.util.ArrayMap;
+
 import com.panda.sakya.base.SakyaClassLoader;
 import com.panda.sakya.plugin.CreateActivityData;
+import com.panda.sakya.plugin.DynamicActivity;
 import com.panda.sakya.plugin.PlugInfo;
 import com.panda.sakya.plugin.PluginContext;
 import com.panda.sakya.plugin.PluginManifestUtil;
 import com.panda.sakya.utils.DexUtils;
 import com.panda.sakya.utils.FileUtils;
+
 import java.io.File;
+import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 import static com.panda.sakya.compat.ActivityThreadCompat.instance;
+import static com.panda.sakya.utils.FieldUtils.getField;
+import static com.panda.sakya.utils.FieldUtils.readField;
 import static com.panda.sakya.utils.FieldUtils.writeField;
+import static com.panda.sakya.utils.MethodUtils.getDeclaredMethod;
+import static com.panda.sakya.utils.MethodUtils.invokeMethod;
+import static com.panda.sakya.utils.MethodUtils.invokeStaticMethod;
 
 /**
  * Created by panda on 16/9/13.
@@ -29,6 +48,9 @@ public class Sakya {
     private static Sakya SINGLETON;
     private Context context;
     private File apkDir, optimizedDir, nativeLibraryDir;
+
+    private final Map<String, PlugInfo> pluginPkgToInfoMap = new ConcurrentHashMap<String, PlugInfo>();
+
 
     private Sakya(Context context) {
         this.context = context;
@@ -69,8 +91,9 @@ public class Sakya {
             FileUtils.copyFile(apkPath, privateFile);
 
             AssetManager am = AssetManager.class.newInstance();
-            am.getClass().getMethod("addAssetPath", String.class)
-                    .invoke(am, privateFile.getAbsolutePath());
+            Method addAssetPath = getDeclaredMethod(AssetManager.class, "addAssetPath", String.class);
+            addAssetPath.setAccessible(true);
+            addAssetPath.invoke(am, privateFile.getAbsolutePath());
 
             Resources hotRes = context.getResources();
             Resources res = new Resources(am, hotRes.getDisplayMetrics(),
@@ -86,35 +109,88 @@ public class Sakya {
             SakyaClassLoader pluginClassLoader = new SakyaClassLoader(info, privateFile.getAbsolutePath(), CommonFilePath.getPluginOptDexPath(optimizedDir, info).getAbsolutePath()
                     , getPluginLibPath(info).getAbsolutePath(), getRootClassLoader());
             info.setClassLoader(pluginClassLoader);
-            ApplicationInfo appInfo = info.getPackageInfo().applicationInfo;
-            Application app = makeApplication(info, appInfo);
+
+            Application app = makeApplication(info);
             attachBaseContext(info, app);
             info.setApplication(app);
 
-            SakyaInstrumentation instrumentation = new SakyaInstrumentation(info);
+            Instrumentation oldInstrumentation = (Instrumentation) readField(instance(), "mInstrumentation", true);
+            SakyaInstrumentation instrumentation = new SakyaInstrumentation(oldInstrumentation);
             writeField(instance(), "mInstrumentation", instrumentation, true);
+
+            pluginPkgToInfoMap.put(info.getPackageName(), info);
 
             startActivity(context, info, info.getMainActivity().activityInfo);
         }
     }
 
+
+    private void setAPKResources(AssetManager newAssetManager)
+            throws NoSuchMethodException, IllegalAccessException, InvocationTargetException, ClassNotFoundException {
+        invokeMethod(newAssetManager, "ensureStringBlocks");
+
+        Collection<WeakReference<Resources>> references;
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+            Class<?> resourcesManagerClass = Class.forName("android.app.ResourcesManager");
+            Object resourcesManager = invokeStaticMethod(resourcesManagerClass, "getInstance");
+
+            if (getField(resourcesManagerClass, "mActiveResources") != null) {
+                ArrayMap<?, WeakReference<Resources>> arrayMap = (ArrayMap) readField(resourcesManager, "mActiveResources", true);
+                references = arrayMap.values();
+            } else {
+                references = (Collection) readField(resourcesManager, "mResourceReferences", true);
+            }
+        } else {
+            HashMap<?, WeakReference<Resources>> map = (HashMap) readField(instance(), "mActiveResources", true);
+            references = map.values();
+        }
+
+        for (WeakReference<Resources> wr : references) {
+            Resources resources = wr.get();
+            if (resources == null) continue;
+
+            try {
+                writeField(resources, "mAssets", newAssetManager);
+            } catch (Throwable ignore) {
+                Object resourceImpl = readField(resources, "mResourcesImpl", true);
+                writeField(resourceImpl, "mAssets", newAssetManager);
+            }
+
+            resources.updateConfiguration(resources.getConfiguration(), resources.getDisplayMetrics());
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            for (WeakReference<Resources> wr : references) {
+                Resources resources = wr.get();
+                if (resources == null) continue;
+
+                // android.util.Pools$SynchronizedPool<TypedArray>
+                Object typedArrayPool = readField(resources, "mTypedArrayPool", true);
+
+                // Clear all the pools
+                while (invokeMethod(typedArrayPool, "acquire") != null) ;
+            }
+        }
+    }
+
+    public PlugInfo getPluginByPackageName(String packageName){
+        return pluginPkgToInfoMap.get(packageName);
+    }
     public void startActivity(Context from, PlugInfo plugInfo, ActivityInfo activityInfo) {
         if (activityInfo == null) {
             throw new ActivityNotFoundException("Cannot find ActivityInfo from plugin, could you declare this Activity in plugin?");
         }
         Intent intent = new Intent();
         CreateActivityData createActivityData = new CreateActivityData(activityInfo.name, plugInfo.getPackageName());
-        try {
-            intent.setClass(from, plugInfo.getClassLoader().loadClass(activityInfo.name));
-        } catch (ClassNotFoundException e) {
-            e.printStackTrace();
-        }
+        intent.setClass(from, DynamicActivity.class);
         intent.putExtra(Constant.FLAG_ACTIVITY_FROM_PLUGIN, createActivityData);
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         from.startActivity(intent);
     }
 
-    private Application makeApplication(PlugInfo plugInfo, ApplicationInfo appInfo) {
+    private Application makeApplication(PlugInfo plugInfo) {
+        ApplicationInfo appInfo = plugInfo.getPackageInfo().applicationInfo;
         String appClassName = appInfo.className;
         if (appClassName == null) {
             appClassName = Application.class.getName();

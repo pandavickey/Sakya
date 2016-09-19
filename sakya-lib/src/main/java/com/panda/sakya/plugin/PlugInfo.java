@@ -291,18 +291,18 @@ public class PlugInfo implements Serializable {
 			synchronized (this) {
 				try {
 					application.onCreate();
-					if (receivers != null && receivers.size() > 0) {
-						for (ResolveInfo resolveInfo : receivers) {
-							if (resolveInfo.activityInfo != null) {
-								try {
-									BroadcastReceiver broadcastReceiver = (BroadcastReceiver) classLoader.loadClass(resolveInfo.activityInfo.name).newInstance();
-									application.registerReceiver(broadcastReceiver, resolveInfo.filter);
-								} catch (Throwable e) {
-									e.printStackTrace();
-								}
-							}
-						}
-					}
+//					if (receivers != null && receivers.size() > 0) {
+//						for (ResolveInfo resolveInfo : receivers) {
+//							if (resolveInfo.activityInfo != null) {
+//								try {
+//									BroadcastReceiver broadcastReceiver = (BroadcastReceiver) classLoader.loadClass(resolveInfo.activityInfo.name).newInstance();
+//									application.registerReceiver(broadcastReceiver, resolveInfo.filter);
+//								} catch (Throwable e) {
+//									e.printStackTrace();
+//								}
+//							}
+//						}
+//					}
 				} catch (Throwable ignored) {
 				}
 				isApplicationOnCreated = true;

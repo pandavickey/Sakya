@@ -14,4 +14,7 @@ public class SakyaClassLoader extends DexClassLoader {
         this.plugInfo = plugInfo;
     }
 
+    public PlugInfo getPlugInfo() {
+        return plugInfo;
+    }
 }
